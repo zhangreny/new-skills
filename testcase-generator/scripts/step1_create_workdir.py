@@ -38,7 +38,7 @@ print(
     json.dumps(
         {
             "workdir": str(workdir),
-            "input_manifest": str(workdir / "input-manifest.json"),
+            "input-manifest": str(workdir / "input-manifest.json"),
         },
         ensure_ascii=False,
     )

@@ -1,4 +1,4 @@
 interface:
   display_name: "测试用例生成"
-  short_description: "接收文档链接、Markdown 与 Figma 信息并生成结构化中文测试用例"
-  default_prompt: "使用 $testcase-generator-zh 基于我提供的文档、Markdown 或 Figma 链接生成中文测试用例。"
+  short_description: "整理需求资料、确认输入范围，并生成结构化中文测试用例与覆盖矩阵"
+  default_prompt: "基于我提供的需求文档、Figma 链接或本地 Markdown，先确认本次纳入的资料范围，再生成结构化中文测试用例。"

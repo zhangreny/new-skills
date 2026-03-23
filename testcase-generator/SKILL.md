@@ -1,67 +1,48 @@
 ---
 name: testcase-generator
-description: 生成企业级测试用例。用于用户提供 Google Docs 链接、对话上传文件、Figma 链接或本地 Markdown 绝对路径时，先在 Downloads 创建任务目录并写入输入清单 JSON，再判断本次使用哪些资料并必须向用户确认，只有在用户明确确认后，才整理确认后的文件与需求资料并输出结构化测试用例、覆盖矩阵和待确认问题。
+description: 基于 Google Docs 链接、对话上传文件、Figma 链接或本地 Markdown 路径生成结构化中文测试用例。用于 Codex 需要先收集并确认需求资料范围、在 Downloads 下创建任务工作目录、统一记录输入清单，再在用户明确确认后整理来源材料并输出需求总结、测试用例、覆盖矩阵和待确认问题的场景。
 ---
 
 # 测试用例生成
 
-## 目标
+## 执行流程
 
-先建立独立任务目录，再把用户输入记录成统一 JSON，先做输入判断和确认，再处理文件与需求资料，最后生成可评审、可执行、可追溯的测试用例。
+### Step1 调用脚本创建工作目录，用于本次用例生成任务的文件存储
 
-## 资源
+执行如下脚本
 
-- `scripts/create_workdir.py`：在当前操作系统的 `Downloads` 下创建 `testcase-generate-YYYYMMDD-HHMMSS` 目录，并初始化 `input-manifest.json`。
-- `scripts/inspect_input_manifest.py`：读取 `input-manifest.json`，展开本地目录或文件路径，并直接返回本次使用文件清单和建议的用户确认项。
-  对于用户指定目录，只返回目录下的 `.md` 和 `.markdown` 文件用于用户确认。
-- `references/step-1-workdir.md`：读取第一步的目录和 JSON 约束。
-- `references/step-2-input-judgement.md`：读取第二步的输入判断和确认规则。
-- `references/step-3-processing.md`：读取第三步的文件存储、资料整理和需求处理规则。
-- `references/testcase-spec.md`：读取测试用例结构、覆盖要求、优先级规则和输出模板。
+```bash
+python scripts/step1_create_workdir.py
+```
 
-## 工作流
+会输出工作目录的绝对路径和 `input-manifest.json` 的绝对路径，如：
 
-### 第一步：创建工作目录并写入输入清单 JSON
+```json
+{
+  "workdir": "C:/Users/username/Downloads/testcase-generate-20260323-100000",
+  "input-manifest": "C:/Users/username/Downloads/testcase-generate-20260323-100000/input-manifest.json"
+}
+```
 
-1. 先运行 `scripts/create_workdir.py`，把输出的目录绝对路径记为本次任务工作目录。
-2. 本次 skill 的所有中间文件和最终产物都写入这个目录，不要散落到其他位置。
-3. 读取 `references/step-1-workdir.md`，按其中详细约束填写工作目录中的 `input-manifest.json`。
-4. 第一步只负责建目录和记录输入，不在这一步复制、转换或整理业务文件。
+**全局参数**：本步骤返回的 `workdir` 路径，将作为后续所有操作的默认工作目录，后续步骤中，请勿将文件保存到其他位置。
 
-### 第二步：判断输入并返回确认项
+### Step2 将用户的输入，分类落入文件清单
 
-1. 读取 `references/step-2-input-judgement.md`。
-2. 如果当前轮存在用户通过 agent 上传的文档，先把这些文档保存到第一步创建的工作目录，并把 `input-manifest.json` 中 `uploaded files by agent` 回写为这些已保存文件的绝对路径。
-3. 运行 `scripts/inspect_input_manifest.py <input-manifest.json 绝对路径>`。
-4. 按 reference 中的规则判断输入完整性、目录展开结果和确认项类型。
-5. 必须先把判断结果返回给用户，并等待用户明确确认。
-6. 如果用户在第二步期间继续补充新的链接、文件或目录，先更新 `input-manifest.json`；如果补充的是 agent 上传文档，则同样先保存到工作目录并回写绝对路径，再重新执行第二步并再次向用户确认。
-7. 第二步只做识别、展开和确认，不生成测试用例，不提前整理成需求文档。
+将用户的输入按下面规则写入 `input-manifest.json` 文件：
+- `google doc url`：只记录 Google Docs 链接。
+- `uploaded files by agent`：记录用户在对话里上传给 agent 的 markdown 文档；先把这些文件保存到工作目录，再回写为保存后的绝对路径。
+- `figma url`：只记录 Figma 链接。
+- `user file directory`：只记录用户明确指定的本地绝对路径，可以是文件或目录；不要在这一步展开目录内容。
 
-### 第三步：存储文件、处理资料并生成测试用例
+如果 uploaded files by agent 且 user file directory 的值都为空，则跳过 Step3，否则仍需执行 Step3
 
-1. 只有在用户明确确认第二步结果后，才进入文件存储和处理。
-2. 读取 `references/step-3-processing.md`，把确认后的资料沉淀到工作目录。
-3. 不要额外创建未明确提及的中间文件；只创建实际需要的资料文件和最终产物。
-4. 再读取 `references/testcase-spec.md`，严格按其中结构输出。
-5. 最少生成以下产物：
-   - `requirements-summary.md`：归纳确认过的需求、业务规则、角色和约束。
-   - `testcases.md`：详细测试用例主体。
-   - `coverage-matrix.md`：功能点到测试用例的覆盖映射。
-   - `open-questions.md`：信息不足、来源冲突、依赖外部确认的项目。
-6. 每条测试用例都要可执行，至少包含：编号、模块、标题、优先级、类型、前置条件、测试数据、步骤、预期结果、来源文件。
-7. 默认覆盖以下维度，只在明确不适用时才省略：
-   - 正向主流程
-   - 反向和异常流程
-   - 边界值与空值
-   - 权限与角色差异
-   - 状态流转与重复操作
-   - Figma 中体现出的交互、文案和视觉规则
-8. 不要把未经证实的实现细节写成确定事实。对推断内容要标记为“假设”或“待确认”。
+### Step3 markdown 文件格式校验
 
-## 输出要求
+执行如下脚本对 `input-manifest.json` 文件的 `uploaded files by agent` 和 `user file directory` 值进行处理，只保留 markdown 文件，且 markdown 文件后面的图片 base64 已被清理掉。
 
-- 优先产出结构清晰、便于评审和复制到测试管理平台的 Markdown。
-- 在 `requirements-summary.md` 中先写“已确认信息”和“假设与缺口”。
-- 在 `testcases.md` 中保持编号稳定；增量更新时尽量复用既有编号。
-- 在 `coverage-matrix.md` 中确保每个关键功能点至少能映射到一个正向用例和一个风险用例。
+```bash
+python scripts/step3_validate_markdown.py <input-manifest.json 的绝对路径>
+```
+
+
+
