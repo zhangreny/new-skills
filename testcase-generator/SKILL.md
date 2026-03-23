@@ -32,7 +32,7 @@ python scripts/step1_create_workdir.py
 - `google doc url`：只记录 Google Docs 链接。
 - `uploaded files by agent`：记录用户在对话里上传给 agent 的 markdown 文档；先把这些文件保存到工作目录，再回写为保存后的绝对路径。
 - `figma url`：只记录 Figma 链接。
-- `user file directory`：只记录用户明确指定的本地绝对路径，可以是文件或目录；不要在这一步展开目录内容。
+- `user file directory`：记录用户明确指定的本地绝对路径，可以是文件或目录；先把这些文件或目录**复制**一份到工作目录，再回写为复制后的绝对路径。不要在这一步展开目录内容。
 
 ### Step3 uploaded files by agent 和 user file directory 保留并处理 markdown 文件
 
