@@ -34,9 +34,7 @@ python scripts/step1_create_workdir.py
 - `figma url`：只记录 Figma 链接。
 - `user file directory`：只记录用户明确指定的本地绝对路径，可以是文件或目录；不要在这一步展开目录内容。
 
-如果 uploaded files by agent 且 user file directory 的值都为空，则跳过 Step3，否则仍需执行 Step3
-
-### Step3 markdown 文件格式校验
+### Step3 uploaded files by agent 和 user file directory 保留并处理 markdown 文件
 
 执行如下脚本对 `input-manifest.json` 文件的 `uploaded files by agent` 和 `user file directory` 值进行处理，只保留 markdown 文件，且 markdown 文件后面的图片 base64 已被清理掉。
 
@@ -44,5 +42,7 @@ python scripts/step1_create_workdir.py
 python scripts/step3_validate_markdown.py <input-manifest.json 的绝对路径>
 ```
 
+**用户交互**：将处理后的 `input-manifest.json` 返回给用户确认，是否使用这些文件继续下一步。如果用户对文件有修改意见，则需要重新执行 Step2 更新 input-manifest.json，并执行 Step3 保留和处理 markdown 文件。只有得到了用户类似 “继续” 的字样，才可执行 Step4
 
+### Step4 返回用户 “测试结束”
 

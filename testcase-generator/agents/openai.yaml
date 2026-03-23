@@ -1,4 +1,0 @@
-interface:
-  display_name: "测试用例生成"
-  short_description: "整理需求资料、确认输入范围，并生成结构化中文测试用例与覆盖矩阵"
-  default_prompt: "基于我提供的需求文档、Figma 链接或本地 Markdown，先确认本次纳入的资料范围，再生成结构化中文测试用例。"
