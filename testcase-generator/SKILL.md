@@ -42,7 +42,7 @@ python scripts/step1_create_workdir.py
 python scripts/step3_validate_markdown.py <input-manifest.json 的绝对路径>
 ```
 
-**用户确认**：将处理后的 `input-manifest.json` 返回给用户确认，是否使用这些文件继续下一步。
+**用户确认**：将处理后的 `input-manifest.json` 返回给用户确认，确认内容为脚本执行完成的 user confirmation message
 
 **用户交互**：如果用户对文件有修改意见，则需要重新执行 Step2 更新 input-manifest.json，并执行 Step3 保留和处理 markdown 文件。只有得到了用户类似 “继续” 的字样，才可执行 Step4
 
