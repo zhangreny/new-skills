@@ -183,6 +183,24 @@ def sanitize_file(path: Path, stats: dict) -> None:
         stats["cleaned_files"] += 1
 
 
+def build_user_confirmation_message(data: dict) -> str:
+    google_doc_urls = as_list(data, "google doc url")
+    uploaded_files = as_list(data, "uploaded files by agent")
+    figma_urls = as_list(data, "figma url")
+    user_files = as_list(data, "user file directory")
+
+    has_figma = bool(figma_urls)
+    has_other_inputs = bool(google_doc_urls or uploaded_files or user_files)
+
+    if not has_figma and not has_other_inputs:
+        return "当前没有有效的输入内容，请上传文件并提供设计稿链接"
+    if has_figma and not has_other_inputs:
+        return "是否需要上传需求文档，有助于 AI 更好的解析设计稿内容，并生成功能相关测试用例"
+    if not has_figma:
+        return "是否需要上传 figma 设计稿链接，有助于 AI 更好理解功能并生成配套前端测试用例"
+    return "请确认当前输入内容，确认后将继续下一步"
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: python scripts/step3_validate_markdown.py <input-manifest.json>")
@@ -207,6 +225,7 @@ def main() -> None:
 
     data["uploaded files by agent"] = uploaded_files
     data["user file directory"] = user_files
+    user_confirmation_message = build_user_confirmation_message(data)
 
     manifest_path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
@@ -223,6 +242,7 @@ def main() -> None:
                     "uploaded files by agent": uploaded_stats,
                     "user file directory": user_stats,
                 },
+                "user confirmation message": user_confirmation_message,
             },
             ensure_ascii=False,
             indent=2,
