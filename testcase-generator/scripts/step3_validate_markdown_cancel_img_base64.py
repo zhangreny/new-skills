@@ -184,10 +184,10 @@ def sanitize_file(path: Path, stats: dict) -> None:
 
 
 def build_user_confirmation_message(data: dict) -> str:
-    google_doc_urls = as_list(data, "google doc url")
-    uploaded_files = as_list(data, "uploaded files by agent")
-    figma_urls = as_list(data, "figma url")
-    user_files = as_list(data, "user file directory")
+    google_doc_urls = as_list(data, "google_doc_url")
+    uploaded_files = as_list(data, "uploaded_files_by_agent")
+    figma_urls = as_list(data, "figma_url")
+    user_files = as_list(data, "user_file_directory")
 
     has_figma = bool(figma_urls)
     has_other_inputs = bool(google_doc_urls or uploaded_files or user_files)
@@ -203,7 +203,7 @@ def build_user_confirmation_message(data: dict) -> str:
 
 def main() -> None:
     if len(sys.argv) != 2:
-        print("Usage: python scripts/step3_validate_markdown.py <input-manifest.json>")
+        print("Usage: python scripts/step3_validate_markdown.py <input_manifest.json>")
         sys.exit(1)
 
     manifest_path = Path(sys.argv[1]).expanduser().resolve(strict=False)
@@ -215,16 +215,16 @@ def main() -> None:
     base_dir = manifest_path.parent
 
     uploaded_files, uploaded_stats = expand_markdown_inputs(
-        as_list(data, "uploaded files by agent"),
+        as_list(data, "uploaded_files_by_agent"),
         base_dir,
     )
     user_files, user_stats = expand_markdown_inputs(
-        as_list(data, "user file directory"),
+        as_list(data, "user_file_directory"),
         base_dir,
     )
 
-    data["uploaded files by agent"] = uploaded_files
-    data["user file directory"] = user_files
+    data["uploaded_files_by_agent"] = uploaded_files
+    data["user_file_directory"] = user_files
     user_confirmation_message = build_user_confirmation_message(data)
 
     manifest_path.write_text(
@@ -235,14 +235,14 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "input-manifest": str(manifest_path),
-                "uploaded files by agent": uploaded_files,
-                "user file directory": user_files,
+                "input_manifest": str(manifest_path),
+                "uploaded_files_by_agent": uploaded_files,
+                "user_file_directory": user_files,
                 "stats": {
-                    "uploaded files by agent": uploaded_stats,
-                    "user file directory": user_stats,
+                    "uploaded_files_by_agent": uploaded_stats,
+                    "user_file_directory": user_stats,
                 },
-                "user confirmation message": user_confirmation_message,
+                "user_confirmation_message": user_confirmation_message,
             },
             ensure_ascii=False,
             indent=2,

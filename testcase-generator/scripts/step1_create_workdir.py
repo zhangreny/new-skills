@@ -6,10 +6,10 @@ import json
 import os
 
 MANIFEST = {
-    "google doc url": [],
-    "uploaded files by agent": [],
-    "figma url": [],
-    "user file directory": [],
+    "google_doc_url": [],
+    "uploaded_files_by_agent": [],
+    "figma_url": [],
+    "user_file_directory": [],
 }
 
 
@@ -30,7 +30,7 @@ target = downloads_dir()
 target.mkdir(parents=True, exist_ok=True)
 workdir = target / f"testcase-generate-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 workdir.mkdir(parents=True, exist_ok=False)
-(workdir / "input-manifest.json").write_text(
+(workdir / "input_manifest.json").write_text(
     json.dumps(MANIFEST, ensure_ascii=False, indent=2),
     encoding="utf-8",
 )
@@ -38,7 +38,7 @@ print(
     json.dumps(
         {
             "workdir": str(workdir),
-            "input-manifest": str(workdir / "input-manifest.json"),
+            "input_manifest": str(workdir / "input_manifest.json"),
         },
         ensure_ascii=False,
     )
