@@ -12,31 +12,9 @@ import sys
 CASE_FILE_NAMES = {
     "step6_subagent_a_ui_cases.md",
     "step6_subagent_b_ui_cases.md",
-    "step6_ui_cases_merged.md",
-    "step6_ui_cases_final.md",
+    "step7_ui_cases_merged.md",
+    "step8_ui_cases_final.md",
 }
-
-REVIEW_FILE_NAMES = {
-    "step6_ui_cases_review.md",
-}
-
-REVIEW_REQUIRED_HEADINGS = {
-    "# Step6 Review",
-    "## 汇总结论",
-    "## 发现与修正",
-    "## 最终判断",
-}
-
-REVIEW_BULLET_SECTIONS = {
-    "## 汇总结论",
-    "## 发现与修正",
-}
-
-REVIEW_ALLOWED_VERDICTS = {
-    "（通过）",
-    "（需补充）",
-}
-
 
 @dataclass
 class FileValidationResult:
@@ -153,52 +131,6 @@ def validate_case_file(path: Path, text: str, result: FileValidationResult) -> N
         result.add_issue("heading count does not match '来源：' line count")
 
 
-def validate_review_file(path: Path, text: str, result: FileValidationResult) -> None:
-    seen_headings: set[str] = set()
-    section_bullet_counts = {section: 0 for section in REVIEW_BULLET_SECTIONS}
-    verdicts: list[str] = []
-    current_section: str | None = None
-
-    for lineno, line in enumerate(text.splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
-            result.heading_count += 1
-            current_section = stripped
-            seen_headings.add(stripped)
-            if stripped not in REVIEW_REQUIRED_HEADINGS:
-                result.add_issue(f"line {lineno}: unexpected review heading: {stripped}")
-        elif stripped.startswith("- "):
-            if current_section not in REVIEW_BULLET_SECTIONS:
-                result.add_issue(f"line {lineno}: bullet item must appear under a review bullet section")
-            else:
-                section_bullet_counts[current_section] += 1
-        elif stripped.startswith("（") and stripped.endswith("）"):
-            if current_section != "## 最终判断":
-                result.add_issue(f"line {lineno}: verdict must appear under '## 最终判断'")
-            verdicts.append(stripped)
-            if stripped not in REVIEW_ALLOWED_VERDICTS:
-                result.add_issue(f"line {lineno}: unexpected review verdict: {stripped}")
-        else:
-            result.add_issue(f"line {lineno}: unexpected content for review markdown: {stripped[:80]}")
-
-        if "?" in stripped:
-            result.suspicious_question_line_count += 1
-            result.add_issue(f"line {lineno}: content contains '?' which is suspicious for Chinese mojibake")
-
-    if result.heading_count == 0:
-        result.add_issue("missing markdown headings")
-    for heading in sorted(REVIEW_REQUIRED_HEADINGS):
-        if heading not in seen_headings:
-            result.add_issue(f"missing required review heading: {heading}")
-    for section, count in section_bullet_counts.items():
-        if count == 0:
-            result.add_issue(f"missing bullet items under review section: {section}")
-    if len(verdicts) != 1:
-        result.add_issue("review markdown must contain exactly one final verdict line")
-
-
 def validate_file(path: Path) -> FileValidationResult:
     result = FileValidationResult(path=str(path))
     if not path.exists():
@@ -218,8 +150,6 @@ def validate_file(path: Path) -> FileValidationResult:
 
     if path.name in CASE_FILE_NAMES:
         validate_case_file(path, text, result)
-    elif path.name in REVIEW_FILE_NAMES:
-        validate_review_file(path, text, result)
     else:
         if "?" in text:
             result.suspicious_question_line_count += text.count("?")
@@ -230,7 +160,7 @@ def validate_file(path: Path) -> FileValidationResult:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Validate generated markdown outputs for encoding loss and expected markdown structure."
+        description="Validate generated case markdown outputs for encoding loss and expected markdown structure."
     )
     parser.add_argument("workdir", help="Workdir created by testcase-generator")
     parser.add_argument(
