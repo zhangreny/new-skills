@@ -1,9 +1,13 @@
 ---
 name: testcase-generator
-description: 基于 Google Docs 链接、对话上传文件、Figma 链接或本地 Markdown 路径生成结构化中文测试用例。用于 Codex 先收集并确认需求资料范围，在 Downloads 下创建任务工作目录、统一记录输入清单，再在用户明确确认后整理来源材料并输出需求总结、测试用例、覆盖矩阵和待确认问题。
+description: 基于 Google Docs 链接、对话上传文件、Figma 链接或本地 Markdown 路径生成结构化中文测试用例。先收集并确认需求资料范围，在 Downloads 下创建任务工作目录、统一记录输入清单，再根据材料并输出 UI 前端测试用例。
 ---
 
 # 测试用例生成
+
+## 文件读取和写入时的编码
+
+由于文件中可能存在中文，因此所有文件读取和写入的编码都优先使用 utf-8
 
 ## 执行流程
 
@@ -78,5 +82,102 @@ python scripts/step3_validate_markdown_cancel_img_base64.py <input_manifest.json
 python scripts/step3_validate_markdown_cancel_img_base64.py <input_manifest.json 的绝对路径>
 ```
 
-### Step5 打印 “skills 测试结束”
+### Step5 若 `figma_url` 不为空，则调用脚本下载仅顶层业务 section 的 png 文件
+
+先执行如下脚本，检查 `input_manifest.json` 文件里的 `figma_url` 字段值是否为空列表：
+
+```bash
+python scripts/step5_check_figma_url_whether_blank.py <input_manifest.json 的绝对路径>
+```
+
+**跳过确认**：如果脚本输出中的 `figma_url_is_empty` 为 `true`，说明当前没有 Figma 链接，则当前 Step5 结束，直接进入 Step6。
+
+如果脚本输出中的 `figma_url_is_empty` 为 `false`，说明当前存在 Figma 链接，则执行如下脚本：
+
+```bash
+python scripts/step5_download_top_level_figma_sections.py <全局参数 workdir 的绝对路径>
+```
+
+**用户交互**：如果脚本输出中的 `download_failed` 不为空，则将失败列表返回给用户确认。只有在用户补充可访问的 Figma 链接或修正 token 后，才重新执行当前 Step5。
+
+- 如果用户给了新的 figma 文档链接，则将 `input_manifest.json` 的 `figma_url` 中的下载失败的 url 移除，将新的 figma url 写入文件，然后不要回退到 Step5，而是仅执行下面的脚本：
+
+```bash
+python scripts/step5_download_top_level_figma_sections.py <全局参数 workdir 的绝对路径>
+```
+
+### Step6 并行调用两个独立 subagent 各自读取全量材料并直接生成 UI 测试用例，再由主 skill 汇总，然后经由主 skill review 复核
+
+先执行如下脚本，收集当前 `workdir` 下可用于 Step6 的全量材料：
+
+```bash
+python scripts/step6_collect_materials.py <全局参数 workdir 的绝对路径>
+```
+
+脚本会输出 `markdown_files`、`image_files`、`total_material_count`、`should_spawn_two_subagents`。后续一律以脚本输出为准。
+
+**无材料时停止**：如果 `should_spawn_two_subagents` 为 `false`，说明当前 `workdir` 下没有可直接用于编写 UI 用例的 markdown 或图片材料。此时不要继续生成空用例，而是明确告知用户当前缺少可分析材料，并等待用户补充。
+
+**先读取模板**：在调用 subagent 之前，先读取以下两个模板文件，后续所有产出都必须遵循这些模板约束。
+- `scripts/step6_ui_cases_output_template.md`
+- `scripts/step6_review_output_template.md`
+
+**必须并行启动两个独立 subagent**：使用 `spawn_agent` 并行启动两个彼此独立的 subagent。两者都必须读取同一份全量材料，禁止将材料按文件拆分给不同 subagent。目标不是分工摘录，而是让两次独立推理分别产出两套完整 UI 测试用例，然后由主 skill 做交叉汇总。
+
+对两个 subagent 都执行以下约束：
+- 两个 subagent 都必须直接读取 `markdown_files` 与 `image_files` 里的全部材料。
+- 两个 subagent 都必须直接生成完整 UI 测试用例，不要先输出大纲、摘要或待确认问题。
+- 两个 subagent 的生成口径都必须遵循 `step6_ui_cases_output_template.md` 的 markdown 结构。
+- subagent A 只允许写入 `step6_subagent_a_ui_cases.md`。
+- subagent B 只允许写入 `step6_subagent_b_ui_cases.md`。
+- 两个 subagent 都不得修改 `step6_ui_cases_merged.md`、`step6_ui_cases_review.md`、`step6_ui_cases_final.md`。
+- 如果 subagent 只在回复中返回 markdown，而没有自行落盘，则主 skill 必须将其输出分别保存到对应文件。
+
+给 subagent 的任务描述至少要包含以下信息：
+- 当前 `workdir` 绝对路径
+- 全量 `markdown_files`
+- 全量 `image_files`
+- 对应输出文件绝对路径
+- `step6_ui_cases_output_template.md` 的绝对路径
+- “直接生成完整 UI 测试用例，不要等待另一位 agent，不要与另一位 agent 协调”的要求
+
+可直接复用如下 prompt 骨架，分别替换输出文件路径后传给两个 subagent：
+
+```text
+读取下列全量材料并直接生成完整 UI 测试用例，保存到 <output_file>。不要只给大纲，不要拆分材料，不要等待另一位 agent。所有输出必须遵循 <case_template_file> 的 markdown 结构。
+
+workdir: <workdir>
+markdown_files:
+<markdown_files>
+
+image_files:
+<image_files>
+```
+
+**等待两个 subagent 全部完成**：只有在 `step6_subagent_a_ui_cases.md` 与 `step6_subagent_b_ui_cases.md` 都已经生成后，主 skill 才能继续汇总。
+
+**主 skill 汇总**：主 skill 必须自行读取两份 subagent 产物，并生成 `step6_ui_cases_merged.md`。汇总时遵循以下规则：
+- 去重同义或明显重复的用例。
+- 对于覆盖范围相近但表述不同的用例，保留更清晰、边界更完整的版本。
+- 对于两份产物中互补的内容，合并保留，不要因为重复章节名而误删有效用例。
+- 统一标题层级与命名风格，但不要改变原始测试意图。
+- `来源：` 必须保留，并在需要时合并多个来源，明确对应的 markdown 文件或截图依据。
+
+**主 skill review 复核**：主 skill 在汇总完成后，必须再次回看全量原始材料，并结合以下文件进行复核：
+- `step6_ui_cases_merged.md`
+
+复核时必须完成两件事：
+- 生成 `step6_ui_cases_review.md`，格式遵循 `step6_review_output_template.md`。
+- 生成最终版本 `step6_ui_cases_final.md`。如果 review 发现遗漏、重复、描述不清、来源不实或层级混乱，则直接修正后写入 final；如果 review 未发现问题，也要将 reviewed 版本保存为 `step6_ui_cases_final.md`，不要缺失 final 文件。
+
+**Step6 结束前强制校验**：执行如下脚本，校验 Step6 所有输出文件的编码和结构：
+
+```bash
+python scripts/step6_validate_generated_markdown.py <全局参数 workdir 的绝对路径>
+```
+
+如果校验失败，主 skill 必须先修复对应 markdown 文件并重新执行校验，直到脚本返回成功，再将 `step6_ui_cases_final.md` 作为 Step6 最终产物返回给用户。
+
+
+
 
