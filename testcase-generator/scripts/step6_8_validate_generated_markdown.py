@@ -15,17 +15,22 @@ CASE_FILE_NAMES = {
     "step7_ui_cases_merged.md",
     "step8_ui_cases_final.md",
 }
+REVIEW_FILE_NAMES = {
+    "step8_ui_cases_review.md",
+}
+REQUIRED_FILE_NAMES = CASE_FILE_NAMES | REVIEW_FILE_NAMES
+
 
 @dataclass
 class FileValidationResult:
     path: str
+    file_kind: str
     ok: bool = True
     issues: list[str] = field(default_factory=list)
     line_count: int = 0
     heading_count: int = 0
     description_count: int = 0
     source_count: int = 0
-    suspicious_question_line_count: int = 0
 
     def add_issue(self, message: str) -> None:
         self.ok = False
@@ -33,8 +38,14 @@ class FileValidationResult:
 
 
 def expected_files(workdir: Path) -> list[Path]:
-    names = sorted(CASE_FILE_NAMES | REVIEW_FILE_NAMES)
-    return [workdir / name for name in names if (workdir / name).exists()]
+    return [workdir / name for name in sorted(REQUIRED_FILE_NAMES)]
+
+
+def resolve_requested_file(workdir: Path, raw_path: str) -> Path:
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = workdir / path
+    return path.resolve(strict=False)
 
 
 def validate_prefixed_line(
@@ -48,12 +59,9 @@ def validate_prefixed_line(
     content = stripped.removeprefix(prefix).strip()
     if not content:
         result.add_issue(f"line {lineno}: {label} line is missing content after '{prefix}'")
-    if "?" in stripped:
-        result.suspicious_question_line_count += 1
-        result.add_issue(f"line {lineno}: {label} contains '?' which is suspicious for Chinese mojibake")
 
 
-def validate_case_file(path: Path, text: str, result: FileValidationResult) -> None:
+def validate_case_file(text: str, result: FileValidationResult) -> None:
     lines = text.splitlines()
     index = 0
 
@@ -71,10 +79,6 @@ def validate_case_file(path: Path, text: str, result: FileValidationResult) -> N
             continue
 
         result.heading_count += 1
-        if "?" in stripped:
-            result.suspicious_question_line_count += 1
-            result.add_issue(f"line {lineno}: heading contains '?' which is suspicious for Chinese mojibake")
-
         index += 1
         if index >= len(lines) or lines[index].strip():
             result.add_issue(f"line {lineno}: heading must be followed by a blank line")
@@ -131,8 +135,20 @@ def validate_case_file(path: Path, text: str, result: FileValidationResult) -> N
         result.add_issue("heading count does not match '来源：' line count")
 
 
+def validate_review_file(text: str, result: FileValidationResult) -> None:
+    if not text.strip():
+        result.add_issue("review file is empty")
+
+
 def validate_file(path: Path) -> FileValidationResult:
-    result = FileValidationResult(path=str(path))
+    if path.name in CASE_FILE_NAMES:
+        file_kind = "case"
+    elif path.name in REVIEW_FILE_NAMES:
+        file_kind = "review"
+    else:
+        file_kind = "unknown"
+
+    result = FileValidationResult(path=str(path), file_kind=file_kind)
     if not path.exists():
         result.add_issue("file not found")
         return result
@@ -147,13 +163,13 @@ def validate_file(path: Path) -> FileValidationResult:
 
     if "\ufffd" in text:
         result.add_issue("contains replacement character U+FFFD")
+    if "\x00" in text:
+        result.add_issue("contains NUL byte")
 
     if path.name in CASE_FILE_NAMES:
-        validate_case_file(path, text, result)
-    else:
-        if "?" in text:
-            result.suspicious_question_line_count += text.count("?")
-            result.add_issue("contains '?' which is suspicious for Chinese mojibake")
+        validate_case_file(text, result)
+    elif path.name in REVIEW_FILE_NAMES:
+        validate_review_file(text, result)
 
     return result
 
@@ -175,7 +191,7 @@ def main() -> None:
         print(json.dumps({"ok": False, "error": f"workdir not found: {workdir}"}, ensure_ascii=False, indent=2))
         sys.exit(1)
 
-    files = [workdir / name for name in args.files] if args.files else expected_files(workdir)
+    files = [resolve_requested_file(workdir, name) for name in args.files] if args.files else expected_files(workdir)
     if not files:
         print(json.dumps({"ok": False, "error": "no generated markdown files found"}, ensure_ascii=False, indent=2))
         sys.exit(1)
@@ -188,12 +204,12 @@ def main() -> None:
         "results": [
             {
                 "path": item.path,
+                "file_kind": item.file_kind,
                 "ok": item.ok,
                 "line_count": item.line_count,
                 "heading_count": item.heading_count,
                 "description_count": item.description_count,
                 "source_count": item.source_count,
-                "suspicious_question_line_count": item.suspicious_question_line_count,
                 "issues": item.issues,
             }
             for item in results

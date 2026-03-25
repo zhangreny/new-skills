@@ -114,11 +114,23 @@ python scripts/step5_download_top_level_figma_sections.py <全局参数 workdir 
 python scripts/step6_collect_materials.py <全局参数 workdir 的绝对路径>
 ```
 
-脚本输出的 `markdown_files`、`image_files` 将用于完整传递给两独立 Subagent 作为输入。
+脚本输出的 `markdown_files`、`image_files` 将用于完整传递给两独立 Subagent 作为输入。脚本会自动排除 `input_manifest.json` 以及已有的 Step6-8 产物文件（`step6_subagent_a_ui_cases.md`、`step6_subagent_b_ui_cases.md`、`step7_ui_cases_merged.md`、`step8_ui_cases_review.md`、`step8_ui_cases_final.md`），避免中间结果在重跑时回流为原始输入。
+
+**空材料兜底**：如果脚本输出中的 `should_spawn_two_subagents` 为 `false`，说明当前没有可用于生成用例的原始材料。此时禁止启动 subagent，应先告知用户并要求补充需求文档、Markdown 文件或 Figma 设计稿。
 
 **读取 markdown 文档模板**：在调用 subagent 之前，先读取 `scripts/step6_ui_cases_output_template.md`，后续 Step6 的所有产出都必须遵循该模板约束。
 
 **并行启动两独立 subagent**：使用 `spawn_agent` 并行启动两个彼此独立的 subagent，两个 agent 和当前主 agent 需要使用相同的模型。两者都必须读取同一份全量材料，禁止将材料按文件拆分给不同 subagent。目标不是分工摘录，而是让两次独立推理分别产出两套完整 UI 测试用例，然后由主 agent 做交叉汇总。
+
+两个 subagent 的输出文件必须分别固定为：
+
+- `<workdir>/step6_subagent_a_ui_cases.md`
+- `<workdir>/step6_subagent_b_ui_cases.md`
+
+两位 subagent 都必须基于全量材料输出“完整用例集”，只是在思考侧重点上刻意拉开差异：
+
+- subagent A：优先关注主流程、核心业务路径、关键模块串联、正常态交互。
+- subagent B：优先关注异常流程、边界条件、状态切换、权限差异、空态和容错。
 
 给 subagent 的任务描述至少要包含以下信息：
 
@@ -127,13 +139,15 @@ python scripts/step6_collect_materials.py <全局参数 workdir 的绝对路径>
 - 全量 `image_files`
 - 对应输出文件绝对路径
 - `step6_ui_cases_output_template.md` 的绝对路径
-- “直接生成完整 UI 测试用例，不要等待另一位 agent，不要与另一位 agent 协调”的要求
-- 
+- “两位 subagent 都必须覆盖全部材料并直接生成完整 UI 测试用例，不要等待另一位 agent，不要与另一位 agent 协调”的要求
+- 当前 subagent 的侧重点提示（A 偏主流程，B 偏边界与异常）
 
 可直接复用如下 prompt 骨架，分别替换输出文件路径后传给两个 subagent：
 
 ```text
-读取下列全量材料并直接生成完整 UI 测试用例，保存到 <output_file>。不要只给大纲，不要拆分材料，不要等待另一位 agent。所有输出必须遵循 <case_template_file> 的 markdown 结构。
+读取下列全量材料并直接生成完整 UI 测试用例，保存到 <output_file>。不要只给大纲，不要拆分材料，不要等待另一位 agent，也不要与另一位 agent 协调。所有输出必须遵循 <case_template_file> 的 markdown 结构。
+
+你仍然必须覆盖全部材料，只是当前更优先关注：<focus_hint>
 
 workdir: <workdir>
 markdown_files:
@@ -147,7 +161,7 @@ image_files:
 
 ### Step7 汇总 Step6 的两 subagent 的用例并生成 merged 版本用例 markdown 文档
 
-必须完整读取 `step6_subagent_a_ui_cases.md` 和 `step6_subagent_b_ui_cases.md` 的全部内容，遵循以下规则进行用例汇总：
+主 skill 必须完整读取 `step6_subagent_a_ui_cases.md` 和 `step6_subagent_b_ui_cases.md` 的全部内容，遵循以下规则进行用例汇总，并将结果保存到 `<workdir>/step7_ui_cases_merged.md`。`step7_ui_cases_merged.md` 也必须遵循 `step6_ui_cases_output_template.md` 的 markdown 结构。
 
 - 去重同义或明显重复的用例。
 - 对于覆盖范围相近但表述不同的用例，保留更清晰、边界更完整的版本。
@@ -161,10 +175,10 @@ image_files:
 - `step7_ui_cases_merged.md`
 
 复核时必须完成两件事：
-- 生成 `step8_ui_cases_review.md`，作为 review 记录自由表达结论、问题和修正意见，不要求遵循固定模板。
+- 生成 `step8_ui_cases_review.md`，作为 review 记录自由表达结论、问题和修正意见，不要求遵循固定模板，但必须是 UTF-8 可解码的非空文本。
 - 生成最终版本 `step8_ui_cases_final.md`。`step8_ui_cases_final.md` 仍需遵循 `step6_ui_cases_output_template.md` 的 markdown 结构。如果 review 发现遗漏、重复、描述不清、来源不实或层级混乱，则直接修正后写入 final；如果 review 未发现问题，也要将 reviewed 版本保存为 `step8_ui_cases_final.md`，不要缺失 final 文件。
 
-**Step8 结束前强制校验**：执行如下脚本。脚本只对用例类 markdown 文件校验模板结构；对 review 文件仅做基础编码检查：
+**Step8 结束前强制校验**：执行如下脚本。脚本会强制检查以下文件都存在：`step6_subagent_a_ui_cases.md`、`step6_subagent_b_ui_cases.md`、`step7_ui_cases_merged.md`、`step8_ui_cases_review.md`、`step8_ui_cases_final.md`。其中对用例类 markdown 文件校验模板结构；对 review 文件只做基础文本校验（UTF-8 解码、非空、无替换字符）：
 
 ```bash
 python scripts/step6_8_validate_generated_markdown.py <全局参数 workdir 的绝对路径>
