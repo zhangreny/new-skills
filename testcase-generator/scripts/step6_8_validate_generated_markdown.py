@@ -6,19 +6,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import argparse
 import json
+import re
 import sys
 
 
-CASE_FILE_NAMES = {
-    "step6_subagent_a_ui_cases.md",
-    "step6_subagent_b_ui_cases.md",
-    "step7_ui_cases_merged.md",
+DIMENSION_FILE_NAMES = {
+    "step6_dimension_breakdown.md",
+}
+TREE_FILE_NAMES = {
+    "step7_combination_expansion.md",
     "step8_ui_cases_final.md",
 }
-REVIEW_FILE_NAMES = {
+TEXT_FILE_NAMES = {
+    "step8_rule_gate_report.md",
     "step8_ui_cases_review.md",
 }
-REQUIRED_FILE_NAMES = CASE_FILE_NAMES | REVIEW_FILE_NAMES
+REQUIRED_FILE_NAMES = DIMENSION_FILE_NAMES | TREE_FILE_NAMES | TEXT_FILE_NAMES
+BULLET_RE = re.compile(r"^(?P<indent> *)(- )(?P<content>.+?)\s*$")
+DIMENSION_LINE_RE = re.compile(r"^(?P<name>[^：\s][^：]*维度)：(?P<values>.+)$")
 
 
 @dataclass
@@ -31,6 +36,7 @@ class FileValidationResult:
     heading_count: int = 0
     description_count: int = 0
     source_count: int = 0
+    case_count: int = 0
 
     def add_issue(self, message: str) -> None:
         self.ok = False
@@ -61,90 +67,119 @@ def validate_prefixed_line(
         result.add_issue(f"line {lineno}: {label} line is missing content after '{prefix}'")
 
 
-def validate_case_file(text: str, result: FileValidationResult) -> None:
-    lines = text.splitlines()
-    index = 0
+def validate_dimension_file(text: str, result: FileValidationResult) -> None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        result.add_issue("dimension file is empty")
+        return
 
-    while index < len(lines):
-        lineno = index + 1
-        stripped = lines[index].strip()
-
-        if not stripped:
-            index += 1
+    for lineno, line in enumerate(lines, start=1):
+        match = DIMENSION_LINE_RE.match(line)
+        if not match:
+            result.add_issue(f"line {lineno}: expected 'xx维度：值1 / 值2 / 值3' format")
             continue
+        values = [item.strip() for item in match.group("values").split("/") if item.strip()]
+        if len(values) == 0:
+            result.add_issue(f"line {lineno}: dimension line must include at least one value")
 
-        if not stripped.startswith("#"):
-            result.add_issue(f"line {lineno}: unexpected content for case markdown: {stripped[:80]}")
-            index += 1
+
+def parse_bullet_line(line: str) -> tuple[int, str] | None:
+    match = BULLET_RE.match(line)
+    if not match:
+        return None
+    indent = len(match.group("indent"))
+    if indent % 4 != 0:
+        return (-1, match.group("content"))
+    return (indent // 4, match.group("content"))
+
+
+def validate_tree_file(text: str, result: FileValidationResult, *, allow_cases: bool) -> None:
+    entries: list[tuple[int, int, str]] = []
+    for lineno, raw_line in enumerate(text.splitlines(), start=1):
+        if not raw_line.strip():
             continue
+        parsed = parse_bullet_line(raw_line)
+        if parsed is None:
+            result.add_issue(f"line {lineno}: non-empty line must start with '- '")
+            continue
+        level, content = parsed
+        if level < 0:
+            result.add_issue(f"line {lineno}: indentation must use multiples of 4 spaces")
+            continue
+        entries.append((lineno, level, content))
 
-        result.heading_count += 1
-        index += 1
-        if index >= len(lines) or lines[index].strip():
-            result.add_issue(f"line {lineno}: heading must be followed by a blank line")
-        else:
-            index += 1
+    if not entries:
+        result.add_issue("tree file is empty")
+        return
 
-        if index >= len(lines):
-            result.add_issue(f"line {lineno}: missing '描述：' line after heading")
-            break
-
-        description_lineno = index + 1
-        description_stripped = lines[index].strip()
-        if not description_stripped.startswith("描述："):
-            result.add_issue(f"line {description_lineno}: expected '描述：' line after heading")
-        else:
+    for index, (lineno, level, content) in enumerate(entries):
+        if content.startswith("描述："):
             result.description_count += 1
             validate_prefixed_line(
-                lineno=description_lineno,
-                stripped=description_stripped,
+                lineno=lineno,
+                stripped=content,
                 prefix="描述：",
                 label="description",
                 result=result,
             )
-            index += 1
+            continue
 
-        if index >= len(lines):
-            result.add_issue(f"line {description_lineno}: missing '来源：' line after '描述：'")
-            break
-
-        source_lineno = index + 1
-        source_stripped = lines[index].strip()
-        if not source_stripped.startswith("来源："):
-            result.add_issue(f"line {source_lineno}: expected '来源：' line after '描述：'")
-        else:
+        if content.startswith("来源："):
             result.source_count += 1
             validate_prefixed_line(
-                lineno=source_lineno,
-                stripped=source_stripped,
+                lineno=lineno,
+                stripped=content,
                 prefix="来源：",
                 label="source",
                 result=result,
             )
-            index += 1
+            continue
+
+        result.heading_count += 1
+        if content.startswith("[C] "):
+            result.case_count += 1
+            if not allow_cases:
+                result.add_issue(f"line {lineno}: tree file must not contain '[C]' case nodes")
+        elif allow_cases and content.startswith("[C]") is False and level > 0:
+            # non-case grouping nodes are allowed
+            pass
+
+        if index + 1 >= len(entries):
+            result.add_issue(f"line {lineno}: missing child '- 描述：' item")
+            continue
+        desc_lineno, desc_level, desc_content = entries[index + 1]
+        if desc_level != level + 1 or not desc_content.startswith("描述："):
+            result.add_issue(f"line {lineno}: expected child '- 描述：' item indented by 4 spaces")
+
+        if index + 2 >= len(entries):
+            result.add_issue(f"line {lineno}: missing child '- 来源：' item")
+            continue
+        source_lineno, source_level, source_content = entries[index + 2]
+        if source_level != level + 1 or not source_content.startswith("来源："):
+            result.add_issue(f"line {lineno}: expected child '- 来源：' item indented by 4 spaces")
 
     if result.heading_count == 0:
-        result.add_issue("missing markdown headings")
-    if result.description_count == 0:
-        result.add_issue("missing '描述：' lines")
-    if result.source_count == 0:
-        result.add_issue("missing '来源：' lines")
+        result.add_issue("missing tree nodes")
     if result.heading_count != result.description_count:
-        result.add_issue("heading count does not match '描述：' line count")
+        result.add_issue("node count does not match '描述：' line count")
     if result.heading_count != result.source_count:
-        result.add_issue("heading count does not match '来源：' line count")
+        result.add_issue("node count does not match '来源：' line count")
+    if allow_cases and result.case_count == 0:
+        result.add_issue("final case file must contain at least one '[C]' node")
 
 
-def validate_review_file(text: str, result: FileValidationResult) -> None:
+def validate_text_file(text: str, result: FileValidationResult) -> None:
     if not text.strip():
-        result.add_issue("review file is empty")
+        result.add_issue("text file is empty")
 
 
 def validate_file(path: Path) -> FileValidationResult:
-    if path.name in CASE_FILE_NAMES:
-        file_kind = "case"
-    elif path.name in REVIEW_FILE_NAMES:
-        file_kind = "review"
+    if path.name in DIMENSION_FILE_NAMES:
+        file_kind = "dimension"
+    elif path.name in TREE_FILE_NAMES:
+        file_kind = "tree"
+    elif path.name in TEXT_FILE_NAMES:
+        file_kind = "text"
     else:
         file_kind = "unknown"
 
@@ -160,30 +195,27 @@ def validate_file(path: Path) -> FileValidationResult:
         return result
 
     result.line_count = len(text.splitlines())
-
     if "\ufffd" in text:
         result.add_issue("contains replacement character U+FFFD")
     if "\x00" in text:
         result.add_issue("contains NUL byte")
 
-    if path.name in CASE_FILE_NAMES:
-        validate_case_file(text, result)
-    elif path.name in REVIEW_FILE_NAMES:
-        validate_review_file(text, result)
+    if path.name in DIMENSION_FILE_NAMES:
+        validate_dimension_file(text, result)
+    elif path.name == "step7_combination_expansion.md":
+        validate_tree_file(text, result, allow_cases=False)
+    elif path.name == "step8_ui_cases_final.md":
+        validate_tree_file(text, result, allow_cases=True)
+    elif path.name in TEXT_FILE_NAMES:
+        validate_text_file(text, result)
 
     return result
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Validate generated case markdown outputs for encoding loss and expected markdown structure."
-    )
+    parser = argparse.ArgumentParser(description="Validate testcase-generator Step6-8 outputs.")
     parser.add_argument("workdir", help="Workdir created by testcase-generator")
-    parser.add_argument(
-        "--files",
-        nargs="*",
-        help="Optional explicit file names under workdir to validate",
-    )
+    parser.add_argument("--files", nargs="*", help="Optional explicit file names under workdir to validate")
     args = parser.parse_args()
 
     workdir = Path(args.workdir).expanduser().resolve(strict=False)
@@ -192,10 +224,6 @@ def main() -> None:
         sys.exit(1)
 
     files = [resolve_requested_file(workdir, name) for name in args.files] if args.files else expected_files(workdir)
-    if not files:
-        print(json.dumps({"ok": False, "error": "no generated markdown files found"}, ensure_ascii=False, indent=2))
-        sys.exit(1)
-
     results = [validate_file(path) for path in files]
     output = {
         "ok": all(item.ok for item in results),
@@ -210,6 +238,7 @@ def main() -> None:
                 "heading_count": item.heading_count,
                 "description_count": item.description_count,
                 "source_count": item.source_count,
+                "case_count": item.case_count,
                 "issues": item.issues,
             }
             for item in results

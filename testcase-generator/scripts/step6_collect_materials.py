@@ -13,11 +13,14 @@ IGNORED_FILE_NAMES = {
     "input_manifest.json",
 }
 GENERATED_OUTPUT_FILE_NAMES = {
+    "step6_dimension_breakdown.md",
+    "step7_combination_expansion.md",
+    "step8_rule_gate_report.md",
+    "step8_ui_cases_review.md",
+    "step8_ui_cases_final.md",
     "step6_subagent_a_ui_cases.md",
     "step6_subagent_b_ui_cases.md",
     "step7_ui_cases_merged.md",
-    "step8_ui_cases_review.md",
-    "step8_ui_cases_final.md",
 }
 
 
@@ -62,7 +65,7 @@ def main() -> None:
                 "markdown_count": len(markdown_files),
                 "image_count": len(image_files),
                 "total_material_count": len(markdown_files) + len(image_files),
-                "should_spawn_two_subagents": bool(markdown_files or image_files),
+                "should_generate_dimensions": bool(markdown_files or image_files),
             },
             ensure_ascii=False,
             indent=2,
