@@ -475,7 +475,7 @@ def main() -> None:
     script_root = Path(__file__).resolve().parent
     skill_root = script_root.parent
     references_root = skill_root / "references"
-    smartx_root = references_root / "UI-former-testcase-analyse" / "Everoute-SmartX-docs"
+    smartx_root = references_root / "Everoute-SmartX-docs"
     everoute_root = references_root / "UI-former-testcase-analyse" / "Everoute"
 
     markdown_files, ignored_markdown = collect_files(workdir, MARKDOWN_SUFFIXES)

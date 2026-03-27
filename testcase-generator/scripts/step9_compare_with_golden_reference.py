@@ -130,6 +130,9 @@ def main() -> None:
 
     missing = [cluster for cluster, _count in golden_top if cluster not in generated["clusters"]]
 
+    below_default_lower_bound = bool(golden["case_count"]) and (generated["case_count"] / golden["case_count"]) < 0.8
+    above_default_upper_bound = bool(golden["case_count"]) and (generated["case_count"] / golden["case_count"]) > 1.2
+
     output = {
         "generated_file": str(generated_path),
         "golden_file": str(golden_path),
@@ -137,9 +140,9 @@ def main() -> None:
         "golden_case_count": golden["case_count"],
         "case_count_delta": generated["case_count"] - golden["case_count"],
         "relative_ratio": round(generated["case_count"] / golden["case_count"], 4) if golden["case_count"] else None,
-        "within_default_relative_range": (
-            bool(golden["case_count"]) and 0.8 <= (generated["case_count"] / golden["case_count"]) <= 1.2
-        ),
+        "within_default_relative_range": bool(golden["case_count"]) and not below_default_lower_bound and not above_default_upper_bound,
+        "below_default_lower_bound": below_default_lower_bound,
+        "above_default_upper_bound": above_default_upper_bound,
         "generated_top_clusters": [{"cluster": cluster, "count": count} for cluster, count in generated_top],
         "golden_top_clusters": [{"cluster": cluster, "count": count} for cluster, count in golden_top],
         "missing_high_value_clusters": missing,

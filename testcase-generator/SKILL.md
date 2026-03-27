@@ -1,7 +1,7 @@
 ---
-
-## name: testcase-generator  
+name: testcase-generator  
 description: 基于 Google Docs 链接、对话上传文件、Figma 链接或本地 Markdown 路径生成结构化中文测试用例。先收集并确认需求资料范围，再在 Step6 做产品知识装载、产品资料理解、资源类型识别与黄金参考判断，随后按 Step7 测试蓝图、Step8 组合展开、Step9 用例执行、Step10 用例强制细分门限执行，并在 Step6-8 强制返回产物给用户确认。
+---
 
 # 测试用例生成
 
@@ -11,7 +11,7 @@ description: 基于 Google Docs 链接、对话上传文件、Figma 链接或本
 
 - `references/UI-former-testcase-analyse/Everoute/everoute_common_testcase_rules.md` 与各产品 `everoute_*_testcase_rules.md`：唯一生效的规则层。
 - `references/UI-former-testcase-analyse/Everoute/*/everoute_*_product_knowledge.md`：产品知识摘要层，用于对象树、子标题编排习惯、拆分轴、固定块和术语校准。
-- `references/UI-former-testcase-analyse/Everoute-SmartX-docs/`：产品资料库，用于 Step6 的理解增强、版本边界提醒和资源识别。
+- `references/Everoute-SmartX-docs/`：产品资料库，用于 Step6 的理解增强、版本边界提醒和资源识别。
 - `references/UI-former-testcase-analyse/Everoute/*/<历史样本目录>/`：历史需求、Figma 图片与历史 testcase，仅在有明确相似度时作为黄金参考候选。
 - `scripts/`：执行辅助脚本与输出模板。
 
@@ -53,7 +53,7 @@ Step6-10 必须优先读取主产品与补充产品的产品知识摘要：
 
 Step6 按需从以下目录挑选有助于理解当前材料的产品资料：
 
-- `references/UI-former-testcase-analyse/Everoute-SmartX-docs/`
+- `references/Everoute-SmartX-docs/`
 
 默认优先读取：
 
@@ -284,6 +284,22 @@ Step9 必须完整读取：
 - `scripts/step9_ui_cases_review_template.md`
 - `scripts/step9_ui_cases_output_template.md`
 
+Step9 开始前必须先执行：
+
+```bash
+python scripts/step9_build_title_bank.py "<workdir>"
+```
+
+脚本会生成：
+
+- `<workdir>/step9_title_bank.json`
+
+用途：
+
+- 基于 Step8 最细组合路径，优先检索当前已采用黄金参考中的历史标题。
+- 再扩展检索主产品目录和补充产品目录下的历史 testcase。
+- 为 Step9 生成最终 `[C]` 标题提供语义近邻，而不是直接照搬复合 case 标题。
+
 Step9 必须生成以下文件：
 
 - `<workdir>/step9_rule_gate_report.md`
@@ -300,12 +316,35 @@ Step9 必须遵循：
 
 - `[C]` 只能落在最细层
 - 每个节点必须紧跟 `描述：`、`来源：`、`承接：`
+- Step9 生成最终 `[C]` 标题时，必须优先写成“动作 + 条件 + 结果”的具体交互语义。
+- `step9_title_bank.json` 中的历史标题只可作为语义模板，不能直接复制复合 case 标题。
+- `显示入口 / 显示默认值 / 显示说明文案 / 显示资源范围 / 列表可见 / 详情可见 / 状态正确 / 提交成功 / 按钮置灰 / 提示必填 / 提示格式错误 / 提示资源冲突 / 保留原状态 / 详情显示限制` 不能直接作为最终 `[C]` 标题。
 - 先执行 Step9 中文字符乱码校验，再执行结构校验与黄金参考对比
 - Step8 的核心组合，要么在 Step9 落成 testcase，要么在 `step9_rule_gate_report.md` 中解释剪枝原因
-- 若 Step6 已采用黄金参考，则结构和覆盖优先向该黄金参考对齐，并按相对数量级检查
+- 若 Step6 已采用黄金参考，则结构和覆盖优先向该黄金参考对齐，并按相对数量级检查；默认只对低于 `0.8x` 的明显缩水做门禁，高于 `1.2x` 时只在报告中说明原因，不强制压缩
 - 若 Step6 未采用黄金参考，则不对数量设 gate，只检查结构、覆盖、固定块和 traceability
 
 ## Step9 结束前校验
+
+先执行语义标题校验：
+
+```bash
+python scripts/step9_validate_leaf_title_semantics.py "<workdir>"
+```
+
+脚本会检查：
+
+- `step9_ui_cases_final.md`
+
+脚本会输出：
+
+- `ok`
+- `generic_title_count`
+- `generic_title_examples`
+- `repetitive_subtrees`
+- `issues`
+
+若语义标题校验失败，Step9 必须只重生成 `step9_ui_cases_final.md`，不能直接进入乱码校验或结构校验。
 
 先执行中文字符乱码校验：
 
@@ -367,11 +406,13 @@ python scripts/step9_compare_with_golden_reference.py "<workdir>"
 - 生成用例数与黄金参考用例数
 - 高价值对象簇分布
 - 黄金参考高价值簇是否缺失
+- 当前相对数量级是否低于默认下限
+- 当前相对数量级是否高于默认上限
 - 当前相对数量级是否落在默认参考带内
 
 若 Step6 未采用黄金参考，则该脚本应输出 `skipped` 结果而不是报错。
 
-如果结构校验或黄金参考对比暴露明显缩水，主 skill 必须先修复对应文件，再进入 Step10。
+如果结构校验或黄金参考对比暴露明显缩水，主 skill 必须先修复对应文件，再进入 Step10；若仅高于默认上限，应在 `step9_rule_gate_report.md` 中说明原因，而不是为了回落到 `1.2x` 内强制压缩语义化叶子。
 
 ### Step10 强制细分闸门
 
