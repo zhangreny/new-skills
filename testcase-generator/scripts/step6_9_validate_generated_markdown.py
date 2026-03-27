@@ -49,12 +49,20 @@ SECTIONED_REQUIREMENTS = {
         "固定块检查",
         "主要风险与缺口",
     ],
+    "step10_case_split_report.md": [
+        "轮次概览",
+        "数量闸门结果",
+        "命中的拆分信号",
+        "已拆分用例",
+        "未拆分原因",
+        "最终结论",
+    ],
 }
 TREE_FILE_RULES = {
     "step8_combination_expansion.md": {"allow_cases": False},
     "step9_ui_cases_final.md": {"allow_cases": True},
+    "step10_ui_cases_final.md": {"allow_cases": True},
 }
-REQUIRED_FILE_NAMES = set(SECTIONED_REQUIREMENTS) | set(TREE_FILE_RULES)
 TREE_METADATA_PREFIXES = ("描述：", "来源：", "承接：")
 BULLET_RE = re.compile(r"^(?P<indent> *)(- )(?P<content>.+?)\s*$")
 HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -185,9 +193,24 @@ def validate_file(path: Path) -> FileValidationResult:
     return result
 
 
+def build_required_file_names(include_step10: bool) -> list[str]:
+    required = [
+        "step6_product_context.md",
+        "step7_test_blueprint.md",
+        "step8_combination_expansion.md",
+        "step9_rule_gate_report.md",
+        "step9_ui_cases_review.md",
+        "step9_ui_cases_final.md",
+    ]
+    if include_step10:
+        required.extend(["step10_case_split_report.md", "step10_ui_cases_final.md"])
+    return required
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate testcase-generator Step6-9 outputs.")
+    parser = argparse.ArgumentParser(description="Validate testcase-generator Step6-9 outputs, optionally including Step10.")
     parser.add_argument("workdir", help="Workdir created by testcase-generator")
+    parser.add_argument("--include-step10", action="store_true", help="Also validate Step10 outputs")
     args = parser.parse_args()
 
     workdir = Path(args.workdir).expanduser().resolve(strict=False)
@@ -195,10 +218,12 @@ def main() -> None:
         print(json.dumps({"ok": False, "error": f"workdir not found: {workdir}"}, ensure_ascii=False, indent=2))
         sys.exit(1)
 
-    results = [validate_file(workdir / filename) for filename in sorted(REQUIRED_FILE_NAMES)]
+    required_files = build_required_file_names(args.include_step10)
+    results = [validate_file(workdir / filename) for filename in required_files]
     output = {
         "ok": all(item.ok for item in results),
         "workdir": str(workdir),
+        "include_step10": args.include_step10,
         "validated_files": len(results),
         "results": [
             {
